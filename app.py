@@ -16,10 +16,11 @@ parser.add_argument("--not-wsl", action="store_true", help="Not using WSL")
 parser.add_argument("--device", type=str, default="cuda:0", help='"cuda:0", "cuda:1", or "cpu". "cuda:0" for a normal environment with a single GPU.')
 parser.add_argument("--token", type=str, default="", help="HuggingFace token")
 
-use_8bit = parser.parse_args().use_8bit
-hf_token = parser.parse_args().token
-device = parser.parse_args().device
-not_wsl = parser.parse_args().not_wsl
+args = parser.parse_args()
+use_8bit = args.use_8bit
+hf_token = args.token
+device = args.device
+not_wsl = args.not_wsl
 
 print(f"Device: {device}, Use 8bit: {str(use_8bit)}")
 
