@@ -18,10 +18,20 @@ An example chatbot using [Gradio](https://gradio.app), [`huggingface_hub`](https
 
 ## Requirements
 
-10~12GB VRAM in 8bit.
-20GB VRAM in 16bit.
+10GB VRAM in 8bit
+20GB VRAM in 16bit
 
-## Usage
+Tested on Python 3.10
+Tested on Pytorch w. CUDA 12.1.
+
+## Features
+
+- Temperature and Top K, prompt and max Length settings
+- Batch processing and Single image processing
+
+![image](sample/s1.png)
+
+## Setup
 
 Intended for use with WSL.
 You must obtain Llama3.1-8B access on HuggingFace in advance.
@@ -45,10 +55,14 @@ python app.py --token YOUR_HF_TOKEN
 
 # Run on 8bit
 python app.py --token YOUR_HF_TOKEN --use-8bit
-
-# Specify device
-python app.py --token YOUR_HF_TOKEN --device "cuda:0"
 ```
 
 3. Open the browser and go to `http://localhost:7860/`.
 4. Enjoy
+
+### Arguments
+
+- `--token`: Your Hugging Face token.
+- `--use-8bit`: Use 8bit model. Default is 16bit.
+- `--device`: Device to run the model on. Default is `cuda:0`.
+- `--not-wsl`: If you are not using WSL, add this flag. If the flag is not set, Windows paths will be automatically converted to WSL paths internally. For example, `C:\hoge\fuga` becomes `/mnt/c/hoge/fuga`.

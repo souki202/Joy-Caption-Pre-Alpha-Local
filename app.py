@@ -12,12 +12,14 @@ import argparse
 
 parser = argparse.ArgumentParser(description="")
 parser.add_argument("--use-8bit", action="store_true", help="Running the model in 8-bit")
+parser.add_argument("--not-wsl", action="store_true", help="Not using WSL")
 parser.add_argument("--device", type=str, default="cuda:0", help='"cuda:0", "cuda:1", or "cpu". "cuda:0" for a normal environment with a single GPU.')
 parser.add_argument("--token", type=str, default="", help="HuggingFace token")
 
 use_8bit = parser.parse_args().use_8bit
 hf_token = parser.parse_args().token
 device = parser.parse_args().device
+not_wsl = parser.parse_args().not_wsl
 
 print(f"Device: {device}, Use 8bit: {str(use_8bit)}")
 
@@ -130,7 +132,7 @@ def process_folder(folder_path: str, temperature: float, top_k: int, input_promp
     results = []
 
     # Windowsの任意のドライブのパスをwslで使えるように変換
-    folder_path = windows_to_wsl_path(folder_path)
+    folder_path = folder_path if not_wsl else windows_to_wsl_path(folder_path)
 
     for filename in os.listdir(folder_path):
         if filename.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp')):
