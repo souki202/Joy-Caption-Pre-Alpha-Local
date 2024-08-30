@@ -161,7 +161,7 @@ with gr.Blocks() as demo:
                 with gr.Row():
                     temperature = gr.Slider(minimum=0.1, maximum=1.0, value=0.75, step=0.05, label="Temperature")
                     top_k = gr.Slider(minimum=1, maximum=100, value=10, step=1, label="Top K")
-                max_length = gr.Slider(label="Max Length", minimum=5, maximum=1000, step=5, value=150)
+                max_length = gr.Slider(label="Max Length", minimum=5, maximum=1000, step=5, value=300)
                 input_prompt = gr.Textbox(label="Prompt (Almost no effect)", value=VLM_PROMPT)
                 run_button = gr.Button("Caption")
             
@@ -175,7 +175,7 @@ with gr.Blocks() as demo:
             with gr.Row():
                 temperature = gr.Slider(minimum=0.1, maximum=1.0, value=0.75, step=0.05, label="Temperature")
                 top_k = gr.Slider(minimum=1, maximum=100, value=10, step=1, label="Top K")
-            max_length = gr.Slider(label="Max Length", minimum=5, maximum=1000, step=5, value=150)
+            max_length = gr.Slider(label="Max Length", minimum=5, maximum=1000, step=5, value=3-0)
             input_prompt = gr.Textbox(label="Prompt (Almost no effect)", value=VLM_PROMPT)
             batch_button = gr.Button("Caption")
         with gr.Column():
