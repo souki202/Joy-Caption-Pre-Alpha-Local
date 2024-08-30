@@ -137,6 +137,12 @@ def process_folder(folder_path: str, temperature: float, top_k: int, input_promp
 
     for filename in os.listdir(folder_path):
         if filename.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp')):
+            output_file = os.path.join(folder_path, f"{os.path.splitext(filename)[0]}.txt")
+
+            # 既に処理済みのファイルはスキップ
+            if os.path.exists(output_file):
+                continue
+
             image_path = os.path.join(folder_path, filename)
             image = Image.open(image_path).convert("RGB")
             result = stream_chat(image, temperature, top_k, input_prompt, max_length)
@@ -145,7 +151,6 @@ def process_folder(folder_path: str, temperature: float, top_k: int, input_promp
                 print(f"Error processing. Result is empty. {filename}")
                 continue
 
-            output_file = os.path.join(folder_path, f"{os.path.splitext(filename)[0]}.txt")
             with open(output_file, 'w', encoding='utf-8') as f:
                 f.write(result)
             results.append(f"{filename}: {result}")
