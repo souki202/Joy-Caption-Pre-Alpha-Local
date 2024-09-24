@@ -19,7 +19,9 @@ An example chatbot using [Gradio](https://gradio.app), [`huggingface_hub`](https
 ## Requirements
 
 - 10GB VRAM in 8bit
+  - 12GB recommended
 - 20GB VRAM in 16bit
+  - 24GB recommended
 
 - Tested on Python 3.10
 - Tested on Pytorch w. CUDA 12.1.
