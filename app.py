@@ -29,7 +29,7 @@ CLIP_PATH = "google/siglip-so400m-patch14-384"
 VLM_PROMPT = 'A descriptive caption for this image:\n'
 MODEL_PATH = "meta-llama/Meta-Llama-3.1-8B"
 CHECKPOINT_PATH = Path("9em124t2-499968")
-TITLE = "<h1><center>JoyCaption Pre-Alpha (2024-07-30a)</center></h1>"
+TITLE = "<h1><center>JoyCaption Alpha One (2024-09-20a)</center></h1>"
 
 class ImageAdapter(nn.Module):
 	def __init__(self, input_features: int, output_features: int, ln1: bool, pos_emb: bool, num_image_tokens: int, deep_extract: bool):
