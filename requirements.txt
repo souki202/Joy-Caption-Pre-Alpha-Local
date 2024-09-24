@@ -1,8 +1,9 @@
 bitsandbytes
-huggingface_hub==0.24.3
+huggingface_hub==0.23.4
 accelerate
 torch
-transformers==4.43.3
+transformers==4.44.0
 sentencepiece
 spaces
 protobuf
+peft==0.12.0
