@@ -121,7 +121,7 @@ print("Loading LLM")
 if (CHECKPOINT_PATH / "text_model").exists:
     print("Loading VLM's custom text model")
     print("./" + (CHECKPOINT_PATH / "text_model/").__str__())
-    text_model = AutoModelForCausalLM.from_pretrained("./" + (CHECKPOINT_PATH / "text_model/").__str__(), local_files_only=True, device_map=device, torch_dtype=torch.bfloat16, token=hf_token, quantization_config=quantization_config, trust_remote_code=True)
+    text_model = AutoModelForCausalLM.from_pretrained("./" + (CHECKPOINT_PATH / "text_model/").__str__(), device_map=device, torch_dtype=torch.bfloat16, token=hf_token, quantization_config=quantization_config, trust_remote_code=True)
     text_model.eval()
 else:
     text_model = AutoModelForCausalLM.from_pretrained(MODEL_PATH, device_map=device, torch_dtype=torch.bfloat16, token=hf_token, quantization_config=quantization_config)
