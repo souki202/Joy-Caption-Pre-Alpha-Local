@@ -26,10 +26,9 @@ not_wsl = args.not_wsl
 print(f"Device: {device}, Use 8bit: {str(use_8bit)}")
 
 CLIP_PATH = "google/siglip-so400m-patch14-384"
+CHECKPOINT_PATH = Path("cgrkzexw-599808")
 VLM_PROMPT = 'A descriptive caption for this image:\n'
-MODEL_PATH = "meta-llama/Meta-Llama-3.1-8B"
-CHECKPOINT_PATH = Path("9em124t2-499968")
-TITLE = "<h1><center>JoyCaption Alpha One (2024-09-20a)</center></h1>"
+TITLE = "<h1><center>JoyCaption Alpha Two (2024-09-20a)</center></h1>"
 
 class ImageAdapter(nn.Module):
 	def __init__(self, input_features: int, output_features: int, ln1: bool, pos_emb: bool, num_image_tokens: int, deep_extract: bool):
@@ -44,10 +43,6 @@ class ImageAdapter(nn.Module):
 		self.linear2 = nn.Linear(output_features, output_features)
 		self.ln1 = nn.Identity() if not ln1 else nn.LayerNorm(input_features)
 		self.pos_emb = None if not pos_emb else nn.Parameter(torch.zeros(num_image_tokens, input_features))
-
-		# Mode token
-		#self.mode_token = nn.Embedding(n_modes, output_features)
-		#self.mode_token.weight.data.normal_(mean=0.0, std=0.02)   # Matches HF's implementation of llama3
 
 		# Other tokens (<|image_start|>, <|image_end|>, <|eot_id|>)
 		self.other_tokens = nn.Embedding(3, output_features)
@@ -77,11 +72,6 @@ class ImageAdapter(nn.Module):
 		x = self.activation(x)
 		x = self.linear2(x)
 
-		# Mode token
-		#mode_token = self.mode_token(mode)
-		#assert mode_token.shape == (x.shape[0], mode_token.shape[1], x.shape[2]), f"Expected {(x.shape[0], 1, x.shape[2])}, got {mode_token.shape}"
-		#x = torch.cat((x, mode_token), dim=1)
-
 		# <|image_start|>, IMAGE, <|image_end|>
 		other_tokens = self.other_tokens(torch.tensor([0, 1], device=self.other_tokens.weight.device).expand(x.shape[0], -1))
 		assert other_tokens.shape == (x.shape[0], 2, x.shape[2]), f"Expected {(x.shape[0], 2, x.shape[2])}, got {other_tokens.shape}"
@@ -107,32 +97,32 @@ clip_processor = AutoProcessor.from_pretrained(CLIP_PATH, quantization_config=qu
 clip_model = AutoModel.from_pretrained(CLIP_PATH)
 clip_model = clip_model.vision_model
 clip_model.eval().to(device)
-clip_model.requires_grad_(False)
 
+assert (CHECKPOINT_PATH / "clip_model.pt").exists()
+print("Loading VLM's custom vision model")
+checkpoint = torch.load(CHECKPOINT_PATH / "clip_model.pt", map_location='cpu')
+checkpoint = {k.replace("_orig_mod.module.", ""): v for k, v in checkpoint.items()}
+clip_model.load_state_dict(checkpoint)
+del checkpoint
 
 # Tokenizer
 print("Loading tokenizer")
-tokenizer = AutoTokenizer.from_pretrained(MODEL_PATH, use_fast=False, token=hf_token, quantization_config=quantization_config)
+tokenizer = AutoTokenizer.from_pretrained(CHECKPOINT_PATH / "text_model", use_fast=True, token=hf_token, quantization_config=quantization_config)
 assert isinstance(tokenizer, PreTrainedTokenizer) or isinstance(tokenizer, PreTrainedTokenizerFast), f"Tokenizer is of type {type(tokenizer)}"
 
 # LLM
 print("Loading LLM")
-
-if (CHECKPOINT_PATH / "text_model").exists:
-    print("Loading VLM's custom text model")
-    print("./" + (CHECKPOINT_PATH / "text_model/").__str__())
-    text_model = AutoModelForCausalLM.from_pretrained("./" + (CHECKPOINT_PATH / "text_model/").__str__(), device_map=device, torch_dtype=torch.bfloat16, token=hf_token, quantization_config=quantization_config, trust_remote_code=True)
-    text_model.eval()
-else:
-    text_model = AutoModelForCausalLM.from_pretrained(MODEL_PATH, device_map=device, torch_dtype=torch.bfloat16, token=hf_token, quantization_config=quantization_config)
-    text_model.eval()
+print("Loading VLM's custom text model")
+# text_model = AutoModelForCausalLM.from_pretrained(CHECKPOINT_PATH / "text_model", device_map="auto", torch_dtype=torch.bfloat16, quantization_config=quantization_config)
+text_model = AutoModelForCausalLM.from_pretrained(CHECKPOINT_PATH / "text_model", device_map=0, torch_dtype=torch.bfloat16)
+text_model.eval().to(device)
 
 # Image Adapter
 print("Loading image adapter")
 image_adapter = ImageAdapter(clip_model.config.hidden_size, text_model.config.hidden_size, False, False, 38, False)
-image_adapter.load_state_dict(torch.load(CHECKPOINT_PATH / "image_adapter.pt", map_location=device))
-# image_adapter.load_state_dict(torch.load(CHECKPOINT_PATH / "image_adapter.pt", map_location="cpu"))
-image_adapter.eval().to(device)
+image_adapter.load_state_dict(torch.load(CHECKPOINT_PATH / "image_adapter.pt", map_location="cpu"))
+image_adapter.eval()
+image_adapter.to(device)
 
 
 @spaces.GPU()
@@ -148,44 +138,69 @@ def stream_chat(input_image: Image.Image, temperature: float, top_k: int, input_
     pixel_values = TVF.normalize(pixel_values, [0.5], [0.5])
     pixel_values = pixel_values.to(device)
 
-    # Tokenize the prompt
-    prompt = tokenizer.encode(input_prompt, return_tensors='pt', padding=False, truncation=False, add_special_tokens=False)
-
     # Embed image
-    with torch.amp.autocast_mode.autocast(device, enabled=True):
+    with torch.amp.autocast_mode.autocast('cuda', enabled=True):
         vision_outputs = clip_model(pixel_values=pixel_values, output_hidden_states=True)
-        image_features = vision_outputs.hidden_states
-        embedded_images = image_adapter(image_features)
+        embedded_images = image_adapter(vision_outputs.hidden_states)
         embedded_images = embedded_images.to(device)
     
-    # Embed prompt
-    prompt_embeds = text_model.model.embed_tokens(prompt.to(device))
-    assert prompt_embeds.shape == (1, prompt.shape[1], text_model.config.hidden_size), f"Prompt shape is {prompt_embeds.shape}, expected {(1, prompt.shape[1], text_model.config.hidden_size)}"
-    embedded_bos = text_model.model.embed_tokens(torch.tensor([[tokenizer.bos_token_id]], device=text_model.device, dtype=torch.int64))
-    eot_embed = image_adapter.get_eot_embedding().unsqueeze(0).to(dtype=text_model.dtype)
-    
-    # Construct prompts
-    inputs_embeds = torch.cat([
-        embedded_bos.expand(embedded_images.shape[0], -1, -1),
-        embedded_images.to(dtype=embedded_bos.dtype),
-        prompt_embeds.expand(embedded_images.shape[0], -1, -1),
-        eot_embed.expand(embedded_images.shape[0], -1, -1),
-    ], dim=1)
+    # Build the conversation
+    convo = [
+        {
+            "role": "system",
+            "content": "You are a helpful image captioner.",
+        },
+        {
+            "role": "user",
+            "content": input_prompt,
+        },
+    ]
+
+    # Format the conversation
+    convo_string = tokenizer.apply_chat_template(convo, tokenize = False, add_generation_prompt = True)
+    assert isinstance(convo_string, str)
+
+    # Tokenize the conversation
+    # prompt_str is tokenized separately so we can do the calculations below
+    convo_tokens = tokenizer.encode(convo_string, return_tensors="pt", add_special_tokens=False, truncation=False)
+    prompt_tokens = tokenizer.encode(input_prompt, return_tensors="pt", add_special_tokens=False, truncation=False)
+    assert isinstance(convo_tokens, torch.Tensor) and isinstance(prompt_tokens, torch.Tensor)
+    convo_tokens = convo_tokens.squeeze(0)   # Squeeze just to make the following easier
+    prompt_tokens = prompt_tokens.squeeze(0)
+
+    # Calculate where to inject the image
+    eot_id_indices = (convo_tokens == tokenizer.convert_tokens_to_ids("<|eot_id|>")).nonzero(as_tuple=True)[0].tolist()
+    assert len(eot_id_indices) == 2, f"Expected 2 <|eot_id|> tokens, got {len(eot_id_indices)}"
+
+    preamble_len = eot_id_indices[1] - prompt_tokens.shape[0]   # Number of tokens before the prompt
+
+    # Embed the tokens
+    convo_embeds = text_model.model.embed_tokens(convo_tokens.unsqueeze(0).to(device))
+
+    # Construct the input
+    input_embeds = torch.cat([
+        convo_embeds[:, :preamble_len],   # Part before the prompt
+        embedded_images.to(dtype=convo_embeds.dtype),   # Image
+        convo_embeds[:, preamble_len:],   # The prompt and anything after it
+    ], dim=1).to(device)
 
     input_ids = torch.cat([
-        torch.tensor([[tokenizer.bos_token_id]], dtype=torch.long),
-        torch.zeros((1, embedded_images.shape[1]), dtype=torch.long),
-        prompt,
-        torch.tensor([[tokenizer.convert_tokens_to_ids("<|eot_id|>")]], dtype=torch.long),
+        convo_tokens[:preamble_len].unsqueeze(0),
+        torch.zeros((1, embedded_images.shape[1]), dtype=torch.long),   # Dummy tokens for the image (TODO: Should probably use a special token here so as not to confuse any generation algorithms that might be inspecting the input)
+        convo_tokens[preamble_len:].unsqueeze(0),
     ], dim=1).to(device)
     attention_mask = torch.ones_like(input_ids)
 
+    # Debugging
+    print(f"Input to model: {repr(tokenizer.decode(input_ids[0]))}")
+
     #generate_ids = text_model.generate(input_ids, inputs_embeds=inputs_embeds, attention_mask=attention_mask, max_new_tokens=300, do_sample=False, suppress_tokens=None)
-    generate_ids = text_model.generate(input_ids, inputs_embeds=inputs_embeds, attention_mask=attention_mask, max_new_tokens=max_length, do_sample=True, top_k=top_k, temperature=temperature, suppress_tokens=None)
+    #generate_ids = text_model.generate(input_ids, inputs_embeds=inputs_embeds, attention_mask=attention_mask, max_new_tokens=300, do_sample=True, top_k=10, temperature=0.5, suppress_tokens=None)
+    generate_ids = text_model.generate(input_ids, inputs_embeds=input_embeds, attention_mask=attention_mask, max_new_tokens=300, do_sample=True, suppress_tokens=None)   # Uses the default which is temp=0.6, top_p=0.9
 
     # Trim off the prompt
     generate_ids = generate_ids[:, input_ids.shape[1]:]
-    if generate_ids[0][-1] == tokenizer.eos_token_id:
+    if generate_ids[0][-1] == tokenizer.eos_token_id or generate_ids[0][-1] == tokenizer.convert_tokens_to_ids("<|eot_id|>"):
         generate_ids = generate_ids[:, :-1]
 
     caption = tokenizer.batch_decode(generate_ids, skip_special_tokens=False, clean_up_tokenization_spaces=False)[0]
@@ -223,17 +238,38 @@ CAPTION_TEMPLATE_MAP = {
 	"formal": ["Write a descriptive caption for this image in a formal tone."],
 	"formal with word count": ["Write a descriptive caption for this image in a formal tone within {word_count} words."],
 	"formal with length": ["Write a {length} descriptive caption for this image in a formal tone."],
-	"informal": ["Write a descriptive caption for this image in a casual tone."],
+	
+    "informal": ["Write a descriptive caption for this image in a casual tone."],
 	"informal with word count": ["Write a descriptive caption for this image in a casual tone within {word_count} words."],
 	"informal with length": ["Write a {length} descriptive caption for this image in a casual tone."],
 
 	"training_prompt": ["Write a stable diffusion prompt for this image."],
 	"training_prompt with word count": ["Write a stable diffusion prompt for this image within {word_count} words."],
 	"training_prompt with length": ["Write a {length} stable diffusion prompt for this image."],
+     
+    "MidJourney": ["Write a MidJourney prompt for this image."],
+    "MidJourney with word count": ["Write a MidJourney prompt for this image within {word_count} words."],
+    "MidJourney with length": ["Write a {length} MidJourney prompt for this image."],
 
-	"rng-tags": ["Write a list of Booru tags for this image."],
-	"rng-tags with word count": ["Write a list of Booru tags for this image within {word_count} words."],
-	"rng-tags with length": ["Write a {length} list of Booru tags for this image."],
+    "Booru tag list": ["Write a list of Booru tags for this image."],
+    "Booru tag list with word count": ["Write a list of Booru tags for this image within {word_count} words."],
+    "Booru tag list with length": ["Write a {length} list of Booru tags for this image."],
+
+    "Booru-like tag list": ["Write a list of Booru-like tags for this image."],
+    "Booru-like tag list with word count": ["Write a list of Booru-like tags for this image within {word_count} words."],
+    "Booru-like tag list with length": ["Write a {length} list of Booru-like tags for this image."],
+
+    "Art Critic": ["Analyze this image like an art critic would with information about its composition, style, symbolism, the use of color, light, any artistic movement it might belong to, etc."],
+    "Art Critic with word count": ["Analyze this image like an art critic would with information about its composition, style, symbolism, the use of color, light, any artistic movement it might belong to, etc. Keep it within {word_count} words."],
+    "Art Critic with length": ["Analyze this image like an art critic would with information about its composition, style, symbolism, the use of color, light, any artistic movement it might belong to, etc. Keep it {length}."],
+    
+    "Product Listing": ["Write a caption for this image as though it were a product listing."],
+    "Product Listing with word count": ["Write a caption for this image as though it were a product listing. Keep it under {word_count} words."],
+    "Product Listing with length": ["Write a {length} caption for this image as though it were a product listing."],
+    
+    "Social Media Post": ["Write a caption for this image as if it were being used for a social media post."],
+    "Social Media Post with word count": ["Write a caption for this image as if it were being used for a social media post. Limit the caption to {word_count} words."],
+    "Social Media Post with length": ["Write a {length} caption for this image as if it were being used for a social media post."],
 }
 
 def update_prompt(caption_type):

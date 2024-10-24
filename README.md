@@ -38,6 +38,8 @@ An example chatbot using [Gradio](https://gradio.app), [`huggingface_hub`](https
 Intended for use with WSL.
 You must obtain Llama3.1-8B access on HuggingFace in advance.
 
+
+
 1. Install the requirements:
 
 ```sh
@@ -49,7 +51,11 @@ pip install torch==2.4.0 torchvision==2.4.0 torchaudio==0.19.0 --index-url https
 pip install -r requirements.txt
 ```
 
-2. Run the app:
+2. Download models
+
+Download the entire directory cgrkzexw-599808 from <https://huggingface.co/spaces/fancyfeast/joy-caption-alpha-two/tree/main> and put it directly under this project.
+
+3. Run the app:
 
 ```sh
 # Run on 16bit
@@ -59,8 +65,8 @@ python app.py --token YOUR_HF_TOKEN
 python app.py --token YOUR_HF_TOKEN --use-8bit
 ```
 
-3. Open the browser and go to `http://localhost:7860/`.
-4. Enjoy
+4. Open the browser and go to `http://localhost:7860/`.
+5. Enjoy
 
 ### Arguments
 
