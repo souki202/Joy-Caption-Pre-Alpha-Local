@@ -27,7 +27,7 @@ print(f"Device: {device}, Use 8bit: {str(use_8bit)}")
 
 CLIP_PATH = "google/siglip-so400m-patch14-384"
 CHECKPOINT_PATH = Path("cgrkzexw-599808")
-VLM_PROMPT = 'A descriptive caption for this image:\n'
+VLM_PROMPT = 'A descriptive caption for this image:'
 TITLE = "<h1><center>JoyCaption Alpha Two (2024-09-20a)</center></h1>"
 
 class ImageAdapter(nn.Module):
@@ -113,8 +113,8 @@ assert isinstance(tokenizer, PreTrainedTokenizer) or isinstance(tokenizer, PreTr
 # LLM
 print("Loading LLM")
 print("Loading VLM's custom text model")
-# text_model = AutoModelForCausalLM.from_pretrained(CHECKPOINT_PATH / "text_model", device_map="auto", torch_dtype=torch.bfloat16, quantization_config=quantization_config)
 text_model = AutoModelForCausalLM.from_pretrained(CHECKPOINT_PATH / "text_model", device_map=0, torch_dtype=torch.bfloat16)
+# text_model = AutoModelForCausalLM.from_pretrained(CHECKPOINT_PATH / "text_model", device_map=0, torch_dtype=torch.bfloat16)
 text_model.eval().to(device)
 
 # Image Adapter
@@ -127,7 +127,7 @@ image_adapter.to(device)
 
 @spaces.GPU()
 @torch.no_grad()
-def stream_chat(input_image: Image.Image, temperature: float, top_k: int, input_prompt: str, max_length: int) -> str:
+def stream_chat(input_image: Image.Image, input_prompt: str) -> str:
     torch.cuda.empty_cache()
 
     # Preprocess image
@@ -207,7 +207,7 @@ def stream_chat(input_image: Image.Image, temperature: float, top_k: int, input_
 
     return caption.strip().strip("\n").strip("'").strip('"')
 
-def process_folder(folder_path: str, temperature: float, top_k: int, input_prompt: str, max_length: int) -> str:
+def process_folder(folder_path: str, input_prompt: str) -> str:
     results = []
 
     # Windowsの任意のドライブのパスをwslで使えるように変換
@@ -223,7 +223,7 @@ def process_folder(folder_path: str, temperature: float, top_k: int, input_promp
 
             image_path = os.path.join(folder_path, filename)
             image = Image.open(image_path).convert("RGB")
-            result = stream_chat(image, temperature, top_k, input_prompt, max_length)
+            result = stream_chat(image, input_prompt)
 
             if (result == "") or (result == None):
                 print(f"Error processing. Result is empty. {filename}")
@@ -282,10 +282,6 @@ with gr.Blocks() as demo:
         with gr.Row():
             with gr.Column():
                 input_image = gr.Image(type="pil", label="Input Image")
-                with gr.Row():
-                    temperature = gr.Slider(minimum=0.1, maximum=1.0, value=0.75, step=0.05, label="Temperature")
-                    top_k = gr.Slider(minimum=1, maximum=100, value=10, step=1, label="Top K")
-                max_length = gr.Slider(label="Max Length", minimum=5, maximum=1000, step=5, value=300)
                 input_prompt = gr.Textbox(label="Prompt", value=VLM_PROMPT)
                 caption_template_input = gr.Dropdown(choices=list(CAPTION_TEMPLATE_MAP.keys()), label="Caption Templates")
                 run_button = gr.Button("Caption")
@@ -297,15 +293,11 @@ with gr.Blocks() as demo:
                 inputs=caption_template_input,
                 outputs=input_prompt
             )
-            run_button.click(fn=stream_chat, inputs=[input_image, temperature, top_k, input_prompt, max_length], outputs=[output_caption])
+            run_button.click(fn=stream_chat, inputs=[input_image, input_prompt], outputs=[output_caption])
 
     with gr.Tab("Batch Processing"):
         with gr.Column():
             folder_path = gr.Textbox(lines=1, placeholder="For example: C:\\...", label="Folder Path")
-            with gr.Row():
-                temperature = gr.Slider(minimum=0.1, maximum=1.0, value=0.75, step=0.05, label="Temperature")
-                top_k = gr.Slider(minimum=1, maximum=100, value=10, step=1, label="Top K")
-            max_length = gr.Slider(label="Max Length", minimum=5, maximum=1000, step=5, value=300)
             input_prompt = gr.Textbox(label="Prompt", value=VLM_PROMPT)
             caption_template_input = gr.Dropdown(choices=list(CAPTION_TEMPLATE_MAP.keys()), label="Caption Templates")
             batch_button = gr.Button("Caption")
@@ -317,7 +309,7 @@ with gr.Blocks() as demo:
             inputs=caption_template_input,
             outputs=input_prompt
         )
-        batch_button.click(fn=process_folder, inputs=[folder_path, temperature, top_k, input_prompt, max_length], outputs=[output_result])
+        batch_button.click(fn=process_folder, inputs=[folder_path, input_prompt], outputs=[output_result])
 
 
 if __name__ == "__main__":
